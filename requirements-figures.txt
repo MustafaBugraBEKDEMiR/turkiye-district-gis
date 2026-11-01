@@ -1,0 +1,4 @@
+-r requirements.txt
+matplotlib>=3.8
+shapely>=2.0
+numpy>=1.26

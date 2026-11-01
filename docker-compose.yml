@@ -1,0 +1,39 @@
+# One command:  docker compose up --build
+#   db      PostgreSQL 16 + PostGIS 3.4, exposed on localhost:5432 (gis / gis)
+#   loader  downloads the sources (if not cached), builds the database, runs the tests
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: citygis
+      POSTGRES_USER: gis
+      POSTGRES_PASSWORD: gis
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gis -d citygis"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  loader:
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: citygis
+      PGUSER: gis
+      PGPASSWORD: gis
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "python scripts/load_data.py && python tests/run_tests.py"
+
+volumes:
+  pgdata:

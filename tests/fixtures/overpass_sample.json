@@ -1,0 +1,183 @@
+{
+ "version": 0.6,
+ "generator": "hand-written test fixture (NOT real OSM data)",
+ "elements": [
+  {
+   "type": "node",
+   "id": 1,
+   "lat": 39.91,
+   "lon": 32.86,
+   "tags": {
+    "amenity": "school",
+    "name": "Fixture School A"
+   }
+  },
+  {
+   "type": "way",
+   "id": 2,
+   "center": {
+    "lat": 39.912,
+    "lon": 32.855
+   },
+   "tags": {
+    "amenity": "school"
+   }
+  },
+  {
+   "type": "node",
+   "id": 3,
+   "lat": 38.0,
+   "lon": 24.5,
+   "tags": {
+    "amenity": "school",
+    "name": "Outside T\u00fcrkiye"
+   }
+  },
+  {
+   "type": "way",
+   "id": 10,
+   "geometry": [
+    {
+     "lon": 32.84,
+     "lat": 39.89
+    },
+    {
+     "lon": 32.842,
+     "lat": 39.89
+    },
+    {
+     "lon": 32.842,
+     "lat": 39.892
+    },
+    {
+     "lon": 32.84,
+     "lat": 39.892
+    },
+    {
+     "lon": 32.84,
+     "lat": 39.89
+    }
+   ],
+   "tags": {
+    "leisure": "park",
+    "name": "Fixture Closed Way Park"
+   }
+  },
+  {
+   "type": "way",
+   "id": 11,
+   "geometry": [
+    {
+     "lon": 32.85,
+     "lat": 39.9
+    },
+    {
+     "lon": 32.86,
+     "lat": 39.9
+    },
+    {
+     "lon": 32.86,
+     "lat": 39.908
+    }
+   ],
+   "tags": {
+    "leisure": "park",
+    "name": "Fixture Unclosed Park"
+   }
+  },
+  {
+   "type": "relation",
+   "id": 12,
+   "members": [
+    {
+     "type": "way",
+     "ref": 101,
+     "role": "outer",
+     "geometry": [
+      {
+       "lon": 32.85,
+       "lat": 39.9
+      },
+      {
+       "lon": 32.86,
+       "lat": 39.9
+      },
+      {
+       "lon": 32.86,
+       "lat": 39.908
+      }
+     ]
+    },
+    {
+     "type": "way",
+     "ref": 102,
+     "role": "outer",
+     "geometry": [
+      {
+       "lon": 32.86,
+       "lat": 39.908
+      },
+      {
+       "lon": 32.85,
+       "lat": 39.908
+      },
+      {
+       "lon": 32.85,
+       "lat": 39.9
+      }
+     ]
+    },
+    {
+     "type": "way",
+     "ref": 103,
+     "role": "inner",
+     "geometry": [
+      {
+       "lon": 32.853,
+       "lat": 39.902
+      },
+      {
+       "lon": 32.857,
+       "lat": 39.902
+      },
+      {
+       "lon": 32.857,
+       "lat": 39.906
+      },
+      {
+       "lon": 32.853,
+       "lat": 39.906
+      },
+      {
+       "lon": 32.853,
+       "lat": 39.902
+      }
+     ]
+    }
+   ],
+   "tags": {
+    "leisure": "park",
+    "type": "multipolygon",
+    "name": "Fixture Park With Hole"
+   }
+  },
+  {
+   "type": "node",
+   "id": 13,
+   "lat": 39.905,
+   "lon": 32.845,
+   "tags": {
+    "leisure": "park"
+   }
+  },
+  {
+   "type": "node",
+   "id": 14,
+   "lat": 39.9,
+   "lon": 32.8,
+   "tags": {
+    "amenity": "cafe"
+   }
+  }
+ ]
+}

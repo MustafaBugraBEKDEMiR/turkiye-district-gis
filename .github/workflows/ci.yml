@@ -1,0 +1,30 @@
+name: build-and-test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  database:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start PostGIS
+        run: docker compose up -d --wait db
+
+      - name: Build database and run tests
+        run: docker compose run --rm --build loader
+
+      - name: Run all example queries
+        run: |
+          for f in sql/queries/*.sql; do
+            echo "::group::$f"
+            docker compose exec -T db psql -U gis -d citygis -v ON_ERROR_STOP=1 -P pager=off < "$f" > /dev/null
+            echo "::endgroup::"
+          done
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs db

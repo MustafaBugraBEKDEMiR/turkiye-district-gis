@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+# OpenStreetMap facility downloads are large (tens of MB); regenerate with
+# scripts/fetch_osm_facilities.py. Aggregated results live in docs/data/.
+data/raw/osm/
+data/raw/osm_facilities.geojson

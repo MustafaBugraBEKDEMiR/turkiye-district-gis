@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Türkiye District Atlas — PostGIS city &amp; district information system</title>
+<meta name="description" content="973 districts of Türkiye: population, density and public-service indicators computed in PostgreSQL/PostGIS.">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+  :root {
+    --ink: #1d2733; --muted: #5d6b7a; --line: #dde3ea; --panel: #ffffffee;
+    --accent: #0f5c7a;
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; color: var(--ink); }
+  #map { position: absolute; inset: 0; background: #eef2f5; }
+
+  .panel {
+    position: absolute; z-index: 1000; top: 16px; left: 16px; width: 320px;
+    max-height: calc(100% - 32px); overflow: auto;
+    background: var(--panel); backdrop-filter: blur(6px);
+    border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 6px 24px #0f1b2a1f; padding: 16px 18px;
+  }
+  h1 { font-size: 17px; margin: 0 0 2px; letter-spacing: -.01em; }
+  .sub { font-size: 12.5px; color: var(--muted); margin: 0 0 14px; line-height: 1.45; }
+  label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase;
+          letter-spacing: .06em; color: var(--muted); margin: 12px 0 5px; }
+  select, input {
+    width: 100%; font: inherit; font-size: 14px; padding: 7px 9px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
+  }
+  .note { font-size: 11.5px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+
+  .legend { margin-top: 14px; }
+  .legend .bar { display: flex; height: 12px; border-radius: 3px; overflow: hidden; }
+  .legend .bar span { flex: 1; }
+  .legend .ticks { display: flex; justify-content: space-between; font-size: 11px;
+                   color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+  .card { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; min-height: 120px; }
+  .card h2 { font-size: 15px; margin: 0; }
+  .card .where { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .card table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .card td { padding: 3px 0; border-bottom: 1px dotted var(--line); }
+  .card td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .card .hint { font-size: 12.5px; color: var(--muted); }
+
+  footer { font-size: 11px; color: var(--muted); margin-top: 14px; line-height: 1.5; }
+  footer a { color: var(--accent); }
+
+  @media (max-width: 640px) {
+    .panel { top: auto; bottom: 0; left: 0; width: 100%; max-height: 46%;
+             border-radius: 12px 12px 0 0; }
+  }
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Map of Türkiye's districts"></div>
+
+<aside class="panel">
+  <h1>Türkiye District Atlas</h1>
+  <p class="sub">973 districts, 81 provinces — indicators computed in
+    PostgreSQL/PostGIS. Hover or tap a district.</p>
+
+  <label for="indicator">Indicator</label>
+  <select id="indicator"></select>
+  <div class="note" id="indicator-note"></div>
+
+  <label for="search">Find a district</label>
+  <input id="search" list="district-list" placeholder="e.g. Çankaya, Ankara" autocomplete="off">
+  <datalist id="district-list"></datalist>
+
+  <div class="legend">
+    <div class="bar" id="legend-bar"></div>
+    <div class="ticks" id="legend-ticks"></div>
+  </div>
+
+  <div class="card" id="card"><p class="hint">No district selected.</p></div>
+
+  <footer id="sources"></footer>
+</aside>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+// Set this to your repository URL after publishing on GitHub
+const REPO_URL = 'https://github.com/MustafaBugraBEKDEMiR/turkiye-district-gis';
+const fmt0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+const fmt1 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
+const fmt2 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+
+// Sequential palettes (light -> dark)
+const BLUES = ['#eef5f9','#cfe3ee','#a6cbe0','#73aecd','#4790b8','#22709c','#0b4f74'];
+const REDS  = ['#fdf1ec','#fbd5c6','#f6ad95','#ec8066','#d9543f','#b5322a','#7f1a1c'];
+
+const INDICATORS = [
+  { key: 'density_per_km2',       label: 'Population density (people / km²)', fmt: fmt1, pal: BLUES },
+  { key: 'population',            label: 'Population',                         fmt: fmt0, pal: BLUES },
+  { key: 'share_of_province_pct', label: 'Share of province population (%)',   fmt: fmt1, pal: BLUES },
+  { key: 'area_km2',              label: 'Area (km²)',                         fmt: fmt0, pal: BLUES },
+  { key: 'service_gap_score',     label: 'Service-gap score (0 = best, 1 = worst)', fmt: fmt2, pal: REDS, fac: true },
+  { key: 'people_per_school',     label: 'People per school',                  fmt: fmt0, pal: REDS, fac: true },
+  { key: 'park_m2_per_capita',    label: 'Park area per person (m²)',          fmt: fmt1, pal: BLUES, fac: true },
+];
+
+const map = L.map('map', { zoomSnap: 0.25, minZoom: 5, zoomControl: false }).setView([39.0, 35.3], 6);
+L.control.zoom({ position: 'topright' }).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  subdomains: 'abcd', maxZoom: 14
+}).addTo(map);
+
+let districts, provincesLayer, current, breaks = [], selected = null, meta = {};
+
+function quantileBreaks(values, n) {
+  const v = values.filter(x => x !== null && x !== undefined).sort((a, b) => a - b);
+  const out = [];
+  for (let i = 1; i < n; i++) out.push(v[Math.floor(i * v.length / n)]);
+  return out;
+}
+function colorFor(value) {
+  if (value === null || value === undefined) return '#d9d9d9';
+  let i = 0;
+  while (i < breaks.length && value >= breaks[i]) i++;
+  return current.pal[i];
+}
+function style(f) {
+  return { weight: 0.6, color: '#ffffff', fillOpacity: 0.85,
+           fillColor: colorFor(f.properties[current.key]) };
+}
+
+function renderLegend(values) {
+  const v = values.filter(x => x !== null && x !== undefined);
+  document.getElementById('legend-bar').innerHTML =
+    current.pal.map(c => `<span style="background:${c}"></span>`).join('');
+  document.getElementById('legend-ticks').innerHTML = v.length
+    ? `<span>${current.fmt.format(Math.min(...v))}</span>` +
+      `<span>median ${current.fmt.format(breaks[Math.floor(breaks.length / 2)])}</span>` +
+      `<span>${current.fmt.format(Math.max(...v))}</span>`
+    : '<span>no data</span>';
+}
+
+function setIndicator(key) {
+  current = INDICATORS.find(i => i.key === key);
+  const values = districts.getLayers().map(l => l.feature.properties[key]);
+  breaks = quantileBreaks(values, current.pal.length);
+  districts.setStyle(style);
+  renderLegend(values);
+  document.getElementById('indicator-note').textContent =
+    'Colours: 7 quantile classes (each holds ~1/7 of the districts).';
+  if (selected) showCard(selected.feature.properties);
+}
+
+function row(label, value, f) {
+  return `<tr><td>${label}</td><td>${value === null || value === undefined ? '—' : f.format(value)}</td></tr>`;
+}
+function showCard(p) {
+  const fac = meta.facilities_loaded;
+  document.getElementById('card').innerHTML = `
+    <h2>${p.district}</h2>
+    <div class="where">${p.province} · ${p.region} · TÜİK code ${p.tuik_code}</div>
+    <table>
+      ${row(`Population (${p.year})`, p.population, fmt0)}
+      ${row('Area (km²)', p.area_km2, fmt1)}
+      ${row('Density (people / km²)', p.density_per_km2, fmt1)}
+      ${row('Share of province (%)', p.share_of_province_pct, fmt1)}
+      ${row('Population rank in province', p.pop_rank_in_province, fmt0)}
+      ${fac ? row('Schools (OSM)', p.schools, fmt0) + row('People per school', p.people_per_school, fmt0)
+            + row('Parks (OSM)', p.parks, fmt0) + row('Park m² per person', p.park_m2_per_capita, fmt1)
+            + row('Service-gap score', p.service_gap_score, fmt2) : ''}
+    </table>`;
+}
+
+function highlight(layer) {
+  if (selected) districts.resetStyle(selected);
+  selected = layer;
+  layer.setStyle({ weight: 2.5, color: '#1d2733' });
+  layer.bringToFront();
+  showCard(layer.feature.properties);
+}
+
+Promise.all([
+  fetch('data/districts.geojson').then(r => r.json()),
+  fetch('data/provinces.geojson').then(r => r.json()),
+  fetch('data/meta.json').then(r => r.json()),
+]).then(([d, p, m]) => {
+  meta = m;
+  const sel = document.getElementById('indicator');
+  INDICATORS.forEach(i => {
+    const o = document.createElement('option');
+    o.value = i.key;
+    o.textContent = i.label + (i.fac && !m.facilities_loaded ? ' — needs OSM layer' : '');
+    o.disabled = i.fac && !m.facilities_loaded;
+    sel.appendChild(o);
+  });
+
+  districts = L.geoJSON(d, {
+    style: f => ({ weight: 0.6, color: '#fff', fillOpacity: 0.85 }),
+    onEachFeature: (f, layer) => {
+      layer.on({
+        mouseover: () => { if (layer !== selected) layer.setStyle({ weight: 1.5, color: '#1d2733' }); showCard(f.properties); },
+        mouseout:  () => { if (layer !== selected) districts.resetStyle(layer); if (selected) showCard(selected.feature.properties); },
+        click:     () => highlight(layer),
+      });
+    }
+  }).addTo(map);
+
+  provincesLayer = L.geoJSON(p, {
+    style: { weight: 1.1, color: '#38475a', fill: false, opacity: 0.7 }, interactive: false
+  }).addTo(map);
+
+  const list = document.getElementById('district-list');
+  const index = {};
+  districts.eachLayer(l => {
+    const name = `${l.feature.properties.district}, ${l.feature.properties.province}`;
+    index[name] = l;
+    list.insertAdjacentHTML('beforeend', `<option value="${name}">`);
+  });
+  document.getElementById('search').addEventListener('change', e => {
+    const l = index[e.target.value];
+    if (l) { map.fitBounds(l.getBounds(), { maxZoom: 10 }); highlight(l); }
+  });
+
+  sel.addEventListener('change', e => setIndicator(e.target.value));
+  setIndicator('density_per_km2');
+
+  document.getElementById('sources').innerHTML =
+    m.sources.join('<br>') + `<br>Data generated ${m.generated}. ` +
+    `<a href="${REPO_URL}">Source code &amp; SQL on GitHub</a>`;
+});
+</script>
+</body>
+</html>
