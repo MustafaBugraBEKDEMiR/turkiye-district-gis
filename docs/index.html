@@ -34,6 +34,11 @@
   }
   .note { font-size: 11.5px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
 
+  .toggle { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 14px; font-size: 13.5px;
+           text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--ink); cursor: pointer; }
+  .toggle input { width: auto; margin: 0; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1px solid #fff;
+         box-shadow: 0 0 0 1px #0003; vertical-align: -1px; margin: 0 3px 0 8px; }
   .legend { margin-top: 14px; }
   .legend .bar { display: flex; height: 12px; border-radius: 3px; overflow: hidden; }
   .legend .bar span { flex: 1; }
@@ -73,6 +78,11 @@
   <input id="search" list="district-list" placeholder="e.g. Çankaya, Ankara" autocomplete="off">
   <datalist id="district-list"></datalist>
 
+  <label class="toggle"><input type="checkbox" id="show-fac">
+    Show schools &amp; parks
+    <span><span class="dot" style="background:#d9822b"></span>school<span class="dot" style="background:#2e8b57"></span>park</span></label>
+  <div class="note" id="fac-note"></div>
+
   <div class="legend">
     <div class="bar" id="legend-bar"></div>
     <div class="ticks" id="legend-ticks"></div>
@@ -106,14 +116,14 @@ const INDICATORS = [
   { key: 'park_m2_per_capita',    label: 'Park area per person (m²)',          fmt: fmt1, pal: BLUES, fac: true },
 ];
 
-const map = L.map('map', { zoomSnap: 0.25, minZoom: 5, zoomControl: false }).setView([39.0, 35.3], 6);
+const map = L.map('map', { zoomSnap: 0.25, minZoom: 5, zoomControl: false, preferCanvas: true }).setView([39.0, 35.3], 6);
 L.control.zoom({ position: 'topright' }).addTo(map);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
   subdomains: 'abcd', maxZoom: 14
 }).addTo(map);
 
-let districts, provincesLayer, current, breaks = [], selected = null, meta = {};
+let districts, provincesLayer, current = INDICATORS[0], breaks = [], selected = null, meta = {};
 
 function quantileBreaks(values, n) {
   const v = values.filter(x => x !== null && x !== undefined).sort((a, b) => a - b);
@@ -182,6 +192,39 @@ function highlight(layer) {
   showCard(layer.feature.properties);
 }
 
+// ---- facility points (schools & parks), loaded on demand -------------------
+const FAC_MIN_ZOOM = 10;
+let facLayer = null;
+function facNote() {
+  const el = document.getElementById('fac-note');
+  if (!meta.facilities_loaded) { el.textContent = 'OSM school/park layer not loaded yet (see README).'; return; }
+  el.textContent = document.getElementById('show-fac').checked && map.getZoom() < FAC_MIN_ZOOM
+    ? `Zoom in to level ${FAC_MIN_ZOOM}+ to see the points.`
+    : `${fmt0.format(meta.facility_count)} features from OpenStreetMap.`;
+}
+function updateFacilities() {
+  const on = document.getElementById('show-fac').checked && map.getZoom() >= FAC_MIN_ZOOM;
+  if (on && !facLayer) {
+    fetch('data/facilities.geojson').then(r => r.json()).then(fc => {
+      facLayer = L.geoJSON(fc, {
+        pointToLayer: (f, ll) => L.circleMarker(ll, {
+          radius: f.properties.t === 's' ? 4 : 3.5, weight: 1, color: '#fff', fillOpacity: 0.95,
+          fillColor: f.properties.t === 's' ? '#d9822b' : '#2e8b57' }),
+        onEachFeature: (f, l) => {
+          const p = f.properties, kind = p.t === 's' ? 'School' : 'Park';
+          l.bindPopup(`<b>${p.n ? p.n.replace(/</g, '&lt;') : '(unnamed ' + kind.toLowerCase() + ')'}</b><br>${kind}` +
+                      (p.a ? ` · ${fmt0.format(p.a)} m²` : ''));
+        }
+      });
+      updateFacilities();
+    });
+    return;
+  }
+  if (facLayer) { if (on) facLayer.addTo(map); else facLayer.remove(); }
+  facNote();
+}
+map.on('zoomend', updateFacilities);
+
 Promise.all([
   fetch('data/districts.geojson').then(r => r.json()),
   fetch('data/provinces.geojson').then(r => r.json()),
@@ -198,7 +241,7 @@ Promise.all([
   });
 
   districts = L.geoJSON(d, {
-    style: f => ({ weight: 0.6, color: '#fff', fillOpacity: 0.85 }),
+    style: f => style(f),   // resetStyle() returns to the current indicator colours
     onEachFeature: (f, layer) => {
       layer.on({
         mouseover: () => { if (layer !== selected) layer.setStyle({ weight: 1.5, color: '#1d2733' }); showCard(f.properties); },
@@ -225,6 +268,10 @@ Promise.all([
   });
 
   sel.addEventListener('change', e => setIndicator(e.target.value));
+  const facBox = document.getElementById('show-fac');
+  facBox.disabled = !m.facilities_loaded;
+  facBox.addEventListener('change', updateFacilities);
+  facNote();
   setIndicator('density_per_km2');
 
   document.getElementById('sources').innerHTML =

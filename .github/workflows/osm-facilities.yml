@@ -1,0 +1,77 @@
+name: refresh-osm-facilities
+
+# Downloads schools & parks for all 81 provinces from OpenStreetMap (Overpass API),
+# rebuilds the database, runs the tests and commits the updated web-map data
+# (docs/data/*.geojson). Start it from the Actions tab → "Run workflow".
+on:
+  workflow_dispatch:
+    inputs:
+      provinces:
+        description: "Plate codes separated by spaces (empty = all 81)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: osm-facilities
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    services:
+      db:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: citygis
+          POSTGRES_USER: gis
+          POSTGRES_PASSWORD: gis
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U gis -d citygis"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGDATABASE: citygis
+      PGUSER: gis
+      PGPASSWORD: gis
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      # Overpass answers are cached per province, so a re-run after a failure resumes
+      - uses: actions/cache@v4
+        with:
+          path: data/raw/osm
+          key: osm-${{ github.run_id }}
+          restore-keys: osm-${{ github.run_id }}   # only re-runs of the same run resume
+
+      - name: Download schools & parks from OpenStreetMap
+        run: python scripts/fetch_osm_facilities.py ${{ github.event.inputs.provinces }}
+
+      - name: Build database
+        run: python scripts/load_data.py
+
+      - name: Tests
+        run: python tests/run_tests.py
+
+      - name: Export web-map data
+        run: python scripts/export_web.py
+
+      - name: Commit updated data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data
+          git diff --cached --quiet && { echo "No changes"; exit 0; }
+          git commit -m "Update OSM schools & parks layer ($(date -u +%Y-%m-%d))"
+          git push

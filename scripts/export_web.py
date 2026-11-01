@@ -7,6 +7,7 @@ Export the reporting layer for the static web map (docs/, served by GitHub Pages
 Writes
   docs/data/districts.geojson  district polygons (simplified) + indicators
   docs/data/provinces.geojson  province outlines (simplified)
+  docs/data/facilities.geojson schools & parks as points (park = point on surface)
   docs/data/meta.json          sources, population year, facility-layer status
 """
 from __future__ import annotations
@@ -45,17 +46,31 @@ FROM (
 ) t
 """
 
+# Compact point layer for the map: t = s(chool) / p(ark), n = name, a = park area m²
+FACILITIES_SQL = """
+SELECT json_build_object('type', 'FeatureCollection', 'features',
+         coalesce(json_agg(json_build_object(
+             'type', 'Feature',
+             'geometry', ST_AsGeoJSON(ST_PointOnSurface(geom), 5)::json,
+             'properties', json_strip_nulls(json_build_object(
+                 't', left(type_code, 1), 'n', name, 'a', round(area_m2)))
+         ) ORDER BY facility_id), '[]'::json))
+FROM gis.facility
+"""
+
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     with psycopg.connect(dsn()) as conn:
         districts = conn.execute(DISTRICTS_SQL).fetchone()[0]
         provinces = conn.execute(PROVINCES_SQL).fetchone()[0]
+        facilities = conn.execute(FACILITIES_SQL).fetchone()[0]
         year, n_fac = conn.execute(
             "SELECT max(year), (SELECT count(*) FROM gis.facility) "
             "FROM gis.district_population").fetchone()
 
-    for name, doc in [("districts", districts), ("provinces", provinces)]:
+    for name, doc in [("districts", districts), ("provinces", provinces),
+                      ("facilities", facilities)]:
         path = OUT / f"{name}.geojson"
         path.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")),
                         encoding="utf-8")

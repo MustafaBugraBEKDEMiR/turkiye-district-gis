@@ -68,10 +68,14 @@ def overpass(plate: int) -> dict:
                 data = json.loads(r.read().decode("utf-8"))
             if "remark" in data and "error" in data["remark"].lower():
                 raise RuntimeError(data["remark"])
+            if not data.get("elements"):
+                # every province has schools; an empty answer means the area
+                # lookup or the server failed — never cache it
+                raise RuntimeError("empty result")
             CACHE.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps(data), encoding="utf-8")
             return data
-        except (urllib.error.URLError, TimeoutError, RuntimeError) as e:
+        except (urllib.error.URLError, TimeoutError, RuntimeError, ValueError) as e:
             print(f"    attempt {attempt + 1} failed ({e}); retrying in {delay}s")
             time.sleep(delay)
             delay *= 2
