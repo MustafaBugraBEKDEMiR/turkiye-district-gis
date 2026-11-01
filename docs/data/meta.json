@@ -1,8 +1,8 @@
 {
   "generated": "2026-11-01",
   "population_year": 2021,
-  "facilities_loaded": false,
-  "facility_count": 0,
+  "facilities_loaded": true,
+  "facility_count": 42577,
   "sources": [
     "Boundaries: geoBoundaries gbOpen TUR ADM1/ADM2 (OpenStreetMap, ODbL 1.0)",
     "Population: TÜİK ADNKS 2021",
