@@ -50,13 +50,14 @@ python scripts/load_data.py      # ~5 s
 python tests/run_tests.py
 ```
 
-**Optional: the schools & parks layer.** It is downloaded from OpenStreetMap province by province
-(~15–30 min, cached, resumable). The easiest way is the GitHub Action **refresh-osm-facilities**
+**Optional: the schools & parks layer** (OpenStreetMap). The easiest way is the GitHub Action **refresh-osm-facilities**
 (Actions tab → *Run workflow*): it downloads the data, rebuilds and tests the database, and commits
 the updated map data. To do the same locally:
 
 ```bash
-python scripts/fetch_osm_facilities.py        # or e.g.  ... 6 34 35  for Ankara, İstanbul, İzmir
+python scripts/osm_pbf_facilities.py          # whole country from the Geofabrik extract (needs osmium-tool)
+# or, for a few provinces via the Overpass API:
+python scripts/fetch_osm_facilities.py 6 34 35
 python scripts/load_data.py
 python scripts/export_web.py                  # refresh the web map data in docs/data/
 ```
@@ -148,7 +149,7 @@ Query files:
 
 ```
 sql/          00_init → 05_views (the build), queries/ (examples)
-scripts/      load_data.py, fetch_osm_facilities.py, export_web.py, make_figures.py
+scripts/      load_data.py, osm_pbf_facilities.py, fetch_osm_facilities.py, export_web.py, make_figures.py
 tests/        run_tests.py, sql/ assertions, fixtures/ (hand-written Overpass sample)
 docs/         index.html (Leaflet web map: districts + school/park points), data/ (exported GeoJSON), report-summary.md
 data/raw/     cached source files

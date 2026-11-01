@@ -1,8 +1,8 @@
 -- =====================================================================
 -- 04_facilities.sql — schools & parks from OpenStreetMap (optional layer)
 --
--- Input: staging.raw_document where source = 'osm_facilities', a GeoJSON
--- FeatureCollection produced by scripts/fetch_osm_facilities.py with
+-- Input: staging.raw_document rows 'osm_facilities#0001', '#0002', ... (GeoJSON
+-- FeatureCollections from scripts/osm_pbf_facilities.py or fetch_osm_facilities.py) with
 -- properties {osm_ref, type, name}. If the file was not fetched, this
 -- script does nothing and the facility-based indicators stay NULL.
 -- =====================================================================
@@ -30,7 +30,7 @@ FROM   staging.raw_document r,
                   END AS geom
            FROM (SELECT ST_SetSRID(ST_GeomFromGeoJSON(f -> 'geometry'), 4326) AS raw) s
        ) g
-WHERE  r.source = 'osm_facilities'
+WHERE  r.source LIKE 'osm_facilities%'
   AND  f -> 'properties' ->> 'type' IN (SELECT type_code FROM facility_type)
   AND  g.geom IS NOT NULL
   AND  NOT ST_IsEmpty(g.geom)          -- unclosed park outlines are dropped

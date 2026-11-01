@@ -65,14 +65,15 @@ def run_sql_file(conn: psycopg.Connection, path: Path) -> None:
 
 def facility_pipeline(conn: psycopg.Connection) -> None:
     saved = conn.execute(
-        "SELECT url, doc FROM staging.raw_document WHERE source = 'osm_facilities'").fetchone()
+        "SELECT source, url, doc FROM staging.raw_document "
+        "WHERE source LIKE 'osm_facilities%'").fetchall()
 
-    def load(url, doc):
-        conn.execute("DELETE FROM staging.raw_document WHERE source = 'osm_facilities'")
+    def load(rows):
+        conn.execute("DELETE FROM staging.raw_document WHERE source LIKE 'osm_facilities%'")
         conn.execute("TRUNCATE gis.facility RESTART IDENTITY")
-        if doc is not None:
+        for source, url, doc in rows:
             conn.execute("INSERT INTO staging.raw_document (source, url, doc) VALUES "
-                         "('osm_facilities', %s, %s)", (url, Jsonb(doc)))
+                         "(%s, %s, %s)", (source, url, Jsonb(doc)))
         run_sql_file(conn, ROOT / "sql" / "04_facilities.sql")
         conn.execute("SELECT report.refresh()")
 
@@ -80,10 +81,10 @@ def facility_pipeline(conn: psycopg.Connection) -> None:
     fixture = {"type": "FeatureCollection",
                "features": [f for f in map(element_to_feature, els) if f]}
     try:
-        load("test-fixture", fixture)
+        load([("osm_facilities#0001", "test-fixture", fixture)])
         run_sql_file(conn, ROOT / "tests" / "sql" / "test_facilities.sql")
     finally:
-        load(*(saved or (None, None)))   # restore the real layer (or empty)
+        load(saved)   # restore the real layer (or nothing)
 
 
 def main() -> int:

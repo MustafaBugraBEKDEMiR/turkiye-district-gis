@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Windows consoles may default to a legacy code page; we print Turkish text and ✓
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 CACHE = ROOT / "data" / "raw" / "osm"
 OUT = ROOT / "data" / "raw" / "osm_facilities.geojson"
 

@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Windows consoles may default to a legacy code page; we print Turkish text and ✓
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 RAW = ROOT / "data" / "raw"
 SQL = ROOT / "sql"
 
@@ -47,6 +47,8 @@ SOURCES: dict[str, tuple[str, str, bool]] = {
     "osm_facilities":     ("local:scripts/fetch_osm_facilities.py",
                            "osm_facilities.geojson", False),
 }
+
+CHUNK = 20_000   # features per staging row for the facility layer
 
 SQL_BEFORE_STAGING = ["00_init.sql", "01_schema.sql", "02_functions.sql"]
 SQL_AFTER_STAGING = ["03_transform.sql", "04_facilities.sql", "05_views.sql"]
@@ -115,11 +117,21 @@ def main() -> None:
         for key, path in files.items():
             doc = json.loads(path.read_text(encoding="utf-8"))
             url = SOURCES[key][0]
-            conn.execute(
-                "INSERT INTO staging.raw_document (source, url, doc) VALUES (%s, %s, %s)",
-                (key, url, psycopg.types.json.Jsonb(doc)),
-            )
-            print(f"  ✓ staging.raw_document ← {key}")
+            # a single jsonb value is limited to ~255 MB, so the (large, optional)
+            # facility layer is stored in chunks: osm_facilities#0001, #0002, ...
+            if key == "osm_facilities":
+                feats = doc["features"]
+                parts = [(f"{key}#{i // CHUNK + 1:04d}",
+                          {"type": "FeatureCollection", "features": feats[i:i + CHUNK]})
+                         for i in range(0, len(feats), CHUNK)] or [(f"{key}#0001", doc)]
+            else:
+                parts = [(key, doc)]
+            for source, part in parts:
+                conn.execute(
+                    "INSERT INTO staging.raw_document (source, url, doc) VALUES (%s, %s, %s)",
+                    (source, url, psycopg.types.json.Jsonb(part)),
+                )
+            print(f"  ✓ staging.raw_document ← {key}" + (f" ({len(parts)} chunks)" if len(parts) > 1 else ""))
         conn.commit()
 
         print("[4/4] transform & reporting layer")

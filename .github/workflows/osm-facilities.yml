@@ -1,13 +1,14 @@
 name: refresh-osm-facilities
 
-# Downloads schools & parks for all 81 provinces from OpenStreetMap (Overpass API),
+# Extracts schools & parks for Türkiye from the Geofabrik OpenStreetMap extract
+# (or, if plate codes are given, downloads just those provinces via Overpass),
 # rebuilds the database, runs the tests and commits the updated web-map data
 # (docs/data/*.geojson). Start it from the Actions tab → "Run workflow".
 on:
   workflow_dispatch:
     inputs:
       provinces:
-        description: "Plate codes separated by spaces (empty = all 81)"
+        description: "Plate codes separated by spaces for an Overpass download (empty = whole country from Geofabrik)"
         required: false
         default: ""
 
@@ -21,7 +22,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 90
     services:
       db:
         image: postgis/postgis:16-3.4
@@ -48,15 +49,17 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      # Overpass answers are cached per province, so a re-run after a failure resumes
-      - uses: actions/cache@v4
-        with:
-          path: data/raw/osm
-          key: osm-${{ github.run_id }}
-          restore-keys: osm-${{ github.run_id }}   # only re-runs of the same run resume
+      - name: Install osmium
+        if: github.event.inputs.provinces == ''
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
 
-      - name: Download schools & parks from OpenStreetMap
-        run: python scripts/fetch_osm_facilities.py ${{ github.event.inputs.provinces }}
+      - name: Extract schools & parks (Geofabrik, whole country)
+        if: github.event.inputs.provinces == ''
+        run: python scripts/osm_pbf_facilities.py
+
+      - name: Download schools & parks (Overpass, selected provinces)
+        if: github.event.inputs.provinces != ''
+        run: python -u scripts/fetch_osm_facilities.py ${{ github.event.inputs.provinces }}
 
       - name: Build database
         run: python scripts/load_data.py
